@@ -1,0 +1,29 @@
+{
+    "cnc": {
+        "!engine": "lcnc-rpc",
+        "engine": "lcnc-arpc",
+        "!engine": "mock",
+        "lcnc-rpc": {
+            "host": "mk-test"
+        }
+    },
+    "imager": {
+        "engine":"auto",
+		"width": 3264,
+		"height": 2448,
+		"scalar": 0.5
+    },
+    "objective": [
+		{
+			"name":"Mitutoyo Apo 20X (trinocular)",
+			"suffix":"mit20x",
+			"x_view": 1.075
+		},
+		{
+			"name":"Mitutoyo Apo 10X (trinocular)",
+			"suffix":"mit10x",
+			"x_view": 2.150
+		}
+    ]
+}
+
