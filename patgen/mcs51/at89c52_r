@@ -1,0 +1,6 @@
+while true; do
+    rm -f /tmp/minipro.tmp
+    minipro -p AT89C52 -r /tmp/minipro.tmp && hexdump -C /tmp/minipro.tmp
+    sleep 0.1
+done
+
