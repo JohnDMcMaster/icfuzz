@@ -9,8 +9,8 @@ save_data := 1
 
 loopi := 0
 
-FormatTime, StartDateTime,, yyyy-MM-dd_HH.mm.ss
-basedir = D:\buffer\rom\ahk\out
+FormatTime, StartDateTime, %A_NowUTC%, yyyy-MM-dd_HH.mm.ss
+basedir = C:\buffer\ahk\out
 dirout = %basedir%\%StartDateTime%
 ; MsgBox %dirout%
 FileCreateDir, %dirout%
@@ -20,19 +20,34 @@ Loop {
 	send {SPACE}
 	Sleep, 2000
 
+	ok := 1
+	status = ok
+	; chip inserted backwards, not in socket, etc
+	if WinExist("ahk_class #32770") {
+		ok := 0
+		status = fail
+		WinGetText wintxt, ahk_class #32770
+	}
 	
 	; clear abnormal condition (if any)
 	; ex: overcurrent during read
 	Send {Esc}
 	Sleep, 200
-	
-	
-	if (show_data) {
+
+
+
+	if (show_data and ok) {
 		; activate data view
 		send ^e
 		; select hex view
+		; bytes instead of words
 		send {Tab}
 		send B
+		Sleep, 200
+		; hex address instead of dec
+		send {Tab}
+		send {Tab}
+		send X
 		send {Up}
 		; let user oogle the data
 		Sleep, 2000
@@ -44,27 +59,36 @@ Loop {
 	}
 
 	if (save_data) {
-		; file => save pattern as
-		; activate file menu
-		; send !f
-		Send {Alt}
-		Send {Down}
-		Send {Down}
-		Send {Down}
-		Send {Down}
-		send {Enter}
-		; save dialogue
-		Sleep, 200
 		loops := Format("{:04}", loopi)
-		FormatTime, curdt,, yyyy-MM-dd_HH.mm.ss
-		fn = %dirout%\%loops%_%curdt%.bin
-		Send %fn%
-		send {Enter}
-		; file format options: accept deafult
-		send {Enter}
+		FormatTime, curdt, %A_NowUTC%, yyyy-MM-dd_HH.mm.ss
+		fn_prefix = %dirout%\%loops%_%curdt%
 
-		
-		Sleep, 200
+		fn = %fn_prefix%.log
+		FileAppend, %status%`r`n, %fn%
+		FileAppend, <WINTXT>%wintxt%</WINTXT>`r`n, %fn%
+
+		if (ok) {
+			; file => save pattern as
+			; activate file menu
+			; send !f
+			Send {Alt}
+			Send {Down}
+			Send {Down}
+			Send {Down}
+			Send {Down}
+			send {Enter}
+			; save dialogue
+			Sleep, 400
+			fn = %fn_prefix%.jed
+			Send %fn%
+			Sleep, 100
+			send {Enter}
+			Sleep, 100
+			; file format options: accept deafult
+			send {Enter}
+			
+			Sleep, 200
+		}
 	}
 
 	loopi := loopi + 1
