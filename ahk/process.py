@@ -24,6 +24,9 @@ def init_part(jed):
         # these seem to map to actual layout
         imw = 66
         imh = 41
+
+        imw = 40
+        imh = 68
     elif part == "PA7140":
         # these should be close but aren't necessarily equal
         # imbits must be >= though
@@ -87,9 +90,15 @@ def load_jed_flat(fn):
     jed = load_jed(fn)
     return jed2txt(jed)
 
+"""
 def gen_jeds(jed_run_dir):
-    for fn in sorted(glob.glob("%s/*.jed" % jed_run_dir)):
+    fns = sorted(glob.glob("%s/*.jed" % jed_run_dir))
+    progress = len(fns) // 20
+    for fni, fn in enumerate(fns):
         yield (fn, load_jed_flat(fn))
+        if fni % progress == 0:
+            print("%0.1f %%" % (100.0 * (fni + 1) / len(fns)))
+"""
 
 def load_log(fn):
     """
@@ -121,6 +130,8 @@ def txtbox2status(txtbox):
         return "ahk"
     elif "backwards" in txtbox:
         return "backwards"
+    elif "Excessive current" in txtbox:
+        return "overcurrent"
     else:
         assert 0, txtbox
         return "unknown"
@@ -132,7 +143,11 @@ def parse_dir(jed_run_dir):
 
     #print(jed_run_dir)
     # while .jed file names can glitch if gui scripting goes off the rails, .log is reliable
-    for log_fn in sorted(glob.glob("%s/*.log" % jed_run_dir)):
+    fns = sorted(glob.glob("%s/*.log" % jed_run_dir))
+    progress = len(fns) // 20
+    for fni, log_fn in enumerate(fns):
+        if fni and fni % progress == 0:
+            print("%0.1f %%" % (100.0 * (fni + 1) / len(fns)))
         stat, txtbox = load_log(log_fn)
         fn_id = os.path.basename(log_fn.replace(".log", ""))
         if stat != "ok":
@@ -200,13 +215,15 @@ def str2im(status, jed, refjed, protjed):
                 c = (0, 0, 64)
             elif status == "backwards":
                 c = (0, 0, 128)
+            elif status == "overcurrent":
+                c = (128, 128, 0)
             elif status == "missing" or status == "ahk":
                 c = (0, 0, 255)
             else:
                 assert 0, status
             im.putpixel((x, y), c)
             i += 1
-    return im.resize((imw * 8, imh * 8))
+    return im.resize((imw * 8, imh * 8), resample=Image.NEAREST)
 
 def mkscore(ref_jedtxt, jedtxt):
     if jedtxt is None:
@@ -229,17 +246,20 @@ def run(dir_fn):
         shutil.rmtree(out_dir)
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
-    diffs = 0
+    data_diffs = 0
+    any_diffs = 0
     for fn_id, status, jedtxt in parse_dir(jed_run_dir):
         if jedtxt == ref_jedtxt:
             print("Match %s" % fn_id)
-        if jedtxt != prot_jedtxt:
-            diffs += 1
+        
         stats[status] = stats.get(status, 0) + 1
         scores[fn_id] = mkscore(ref_jedtxt, jedtxt)
         im = str2im(status, jedtxt, ref_jedtxt, prot_jedtxt)
         if jedtxt != prot_jedtxt:
+            any_diffs += 1
+        if status == "ok" and jedtxt != prot_jedtxt:
             im.save("%s/%s.png" % (out_dir, fn_id))
+            data_diffs += 1
     
 
     scoresort = list(scores.items())
@@ -253,7 +273,8 @@ def run(dir_fn):
     print("Status distribution (%u net)" % sum(stats.values()))
     for k, v in sorted(stats.items()):
         print("  %s: %s" % (k, v))
-    print("Not identity protected: %u" % diffs)
+    print("Not reference: %u" % any_diffs)
+    print("Not reference and ok: %u" % data_diffs)
 
 if __name__ == "__main__":
     import argparse
