@@ -20,3 +20,11 @@ dist
 .project
 .pydevproject
 
+*.jl
+*.csv
+*.tar
+*.zip
+*.bz2
+*.jpg
+*.png
+
