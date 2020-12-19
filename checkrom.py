@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+"""
+Run statistics checks on .bin file to look for common issues
+In particular look for stuck address and/or bit lines
+"""
 
 import math
 
