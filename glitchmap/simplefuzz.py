@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 '''
 Scans across a die
@@ -8,8 +8,8 @@ Finds areas that changes chip operation
 Dumbed down version of "ezfuzz"
 '''
 
-from uvscada.cnc_hal import lcnc_ar
-from uvscada.benchmark import time_str
+from uscope.hal.cnc import lcnc_ar
+from uscope.benchmark import time_str
 
 from bpmicro import startup
 from bpmicro import cmd
@@ -21,31 +21,34 @@ import datetime
 import os
 import json
 import base64
-import md5
+import hashlib
 import binascii
 
 def read_fw(device, cont):
     devcfg = None
     e = None
     # Try a few times to get a valid read
-    for i in xrange(1):
+    for _ in range(1):
         try:
             devcfg = device.read({'cont': cont})
             break
         except cmd.BusError as e:
-            print 'WARNING: bus error'
+            print('WARNING: bus error')
         except cmd.Overcurrent as e:
-            print 'WARNING: overcurrent'
+            print('WARNING: overcurrent')
         except cmd.ContFail as e:
-            print 'WARNING: continuity fail'
+            print('WARNING: continuity fail')
         except Exception as e:
             # Sometimes still get weird errors
             #raise
-            print 'WARNING: unknown error: %s' % str(e)
+            print('WARNING: unknown error: %s' % str(e))
     return devcfg, e
 
-def md5str(base_data_md5):
-    return base_data_md5[0:8] if base_data_md5 else 'None'
+def myhash(buff):
+    return binascii.hexlify(hashlib.md5.new(buff).digest())
+
+def md5str(myhash):
+    return myhash[0:8] if myhash else 'None'
 
 def do_run(hal, bp, width, height, dry, fout, xstep, ystep, samples=1, cont=True):
     # Use focus to adjust
@@ -70,31 +73,31 @@ def do_run(hal, bp, width, height, dry, fout, xstep, ystep, samples=1, cont=True
     def my_md5(devcfg):
         data_md5 = None
         if 'data' in devcfg:
-            data_md5 = binascii.hexlify(md5.new(devcfg['data']).digest())
-        code_md5 = binascii.hexlify(md5.new(devcfg['code']).digest())
-        config_md5 = binascii.hexlify(md5.new(str(devcfg['config'])).digest())
+            data_md5 = myhash(devcfg['data'])
+        code_md5 = myhash(devcfg['code'])
+        config_md5 = myhash(devcfg['config'])
         return data_md5, code_md5, config_md5
 
-    print 'Dummy firmware read'
+    print('Dummy firmware read')
     trstart = time.time()
     devcfg, e = read_fw(device, cont)
     if not devcfg:
         #raise Exception("Failed to get baseline!")
-        print 'WARNING: failed to get baseline!'
+        print('WARNING: failed to get baseline!')
         base_data_md5, base_code_md5, base_config_md5 = None, None, None
     else:
         base_data_md5, base_code_md5, base_config_md5 = my_md5(devcfg)
-        print 'Baseline: %s %s %s' % (md5str(base_data_md5), md5str(base_code_md5), md5str(base_config_md5))
+        print('Baseline: %s %s %s' % (md5str(base_data_md5), md5str(base_code_md5), md5str(base_config_md5)))
     trend = time.time()
     tread = trend - trstart
-    print 'Read time: %0.1f' % tread
+    print('Read time: %0.1f' % tread)
 
     # FIXME: estimate
     tmove = 0.1
     tsample = tread + tmove
-    print 'Sample time: %0.1f' % tsample
+    print('Sample time: %0.1f' % tsample)
     nsamples = cols * rows
-    print 'Taking %dc x %dr x %ds => %d net samples => ETA %s' % (cols, rows, samples, nsamples, time_str(tsample * nsamples))
+    print('Taking %dc x %dr x %ds => %d net samples => ETA %s' % (cols, rows, samples, nsamples, time_str(tsample * nsamples)))
 
     if jf:
         j = {
@@ -112,16 +115,16 @@ def do_run(hal, bp, width, height, dry, fout, xstep, ystep, samples=1, cont=True
         jf.flush()
 
     posi = 0
-    for row in xrange(rows):
+    for row in range(rows):
         y = y0 + row * ystep
         hal.mv_abs({'x': x0 - backlash, 'y': y})
-        for col in xrange(cols):
+        for col in range(cols):
             posi += 1
             x = x0 + col * xstep
             hal.mv_abs({'x': x})
-            print '%s taking %d / %d @ %dc, %dr (G0 X%0.1f Y%0.1f)' % (datetime.datetime.utcnow(), posi, nsamples, col, row, x, y)
+            print('%s taking %d / %d @ %dc, %dr (G0 X%0.1f Y%0.1f)' % (datetime.datetime.utcnow(), posi, nsamples, col, row, x, y))
             # Hit it a bunch of times in case we got unlucky
-            for dumpi in xrange(samples):
+            for dumpi in range(samples):
                 # Some evidence suggests overcurrent isn't getting cleared, causing failed captured
                 # Try re-initializing
                 # TODO: figure out the proper check
@@ -146,13 +149,13 @@ def do_run(hal, bp, width, height, dry, fout, xstep, ystep, samples=1, cont=True
                     # Some crude monitoring
                     # Top histogram counts would be better though
                     data_md5, code_md5, config_md5 = my_md5(devcfg)
-                    print '  %d %s %s %s' % (dumpi, md5str(data_md5), md5str(code_md5), md5str(config_md5))
+                    print('  %d %s %s %s' % (dumpi, md5str(data_md5), md5str(code_md5), md5str(config_md5))
                     if code_md5 != base_code_md5:
-                        print '    code...: %s' % binascii.hexlify(devcfg['code'][0:16])
+                        print('    code...: %s' % binascii.hexlify(devcfg['code'][0:16])
                     if data_md5 and data_md5 != base_data_md5:
-                        print '    data...: %s' % binascii.hexlify(devcfg['data'][0:16])
+                        print('    data...: %s' % binascii.hexlify(devcfg['data'][0:16])
                     if config_md5 != base_config_md5:
-                        print '    config: %s' % str(devcfg['config'],)
+                        print('    config: %s' % str(devcfg['config'],)
                     j['devcfg'] = {
                         'code': base64.b64encode(devcfg['code']),
                         'config': devcfg['config'],
@@ -166,22 +169,22 @@ def do_run(hal, bp, width, height, dry, fout, xstep, ystep, samples=1, cont=True
                     jf.write(json.dumps(j) + '\n')
                     jf.flush()
 
-    print 'Ret home'
+    print('Ret home')
     hal.mv_abs({'x': x0, 'y': y0})
-    print 'Movement done'
+    print('Movement done')
     tend = time.time()
-    print 'Took %s' % time_str(tend - tstart)
+    print('Took %s' % time_str(tend - tstart))
 
 def run(cnc_host, dry, width, height, fnout, step, samples=1, force=False):
     hal = None
 
     try:
-        print
-        print 'Initializing LCNC'
+        print("")
+        print('Initializing LCNC'
         hal = lcnc_ar.LcncPyHalAr(host=cnc_host, dry=dry, log=None)
 
-        print
-        print 'Initializing programmer'
+        print("")
+        print('Initializing programmer')
         bp = startup.get()
 
         fout = None
@@ -190,15 +193,15 @@ def run(cnc_host, dry, width, height, fnout, step, samples=1, force=False):
         if not dry:
             fout = open(fnout, 'w')
 
-        print
-        print 'Running'
+        print("")
+        print('Running')
         do_run(hal=hal, bp=bp, width=width, height=height, dry=dry, fout=fout, xstep=step, ystep=step, samples=samples)
     finally:
-        print 'Shutting down hal'
+        print('Shutting down hal')
         if hal:
             hal.ar_stop()
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description='Use ezlaze to fuzz dice')
     parser.add_argument('--cnc', default='mk', help='LinuxCNC host')
     parser.add_argument('--dry', action='store_true', help='Dry run')
@@ -212,3 +215,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     run(cnc_host=args.cnc, dry=args.dry, width=args.width, height=args.height, fnout=args.fout, step=args.step, samples=args.samples, force=args.force)
+
+if __name__ == "__main__":
+    main())
