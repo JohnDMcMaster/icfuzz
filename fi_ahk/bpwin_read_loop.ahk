@@ -95,12 +95,5 @@ Loop {
 	;MsgBox, %loopi%
 }
 
-
-
-
-; this makes it so if you press escape, it stops the script, good for infinite loops
-; supposedly you keep this at the bottom of the file per stackoverflow
-; interfering with closing message boxes
-; Esc::ExitApp
-; harmless key
+; Press shift (mostly unused key) to exit
 Shift::ExitApp
