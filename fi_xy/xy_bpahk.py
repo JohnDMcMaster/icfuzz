@@ -11,9 +11,7 @@ Dumbed down version of "ezfuzz"
 from uscope.hal.cnc import lcnc_ar
 from uscope.benchmark import time_str
 
-from bpmicro import startup
-from bpmicro import cmd
-from bpmicro import devices
+from bpwahk import BPWAHK
 
 import argparse
 import time
@@ -24,30 +22,23 @@ import base64
 import hashlib
 import binascii
 
-def read_fw(device, cont):
+def read_fw(bp, cont):
     devcfg = None
     e = None
     # Try a few times to get a valid read
-    for _ in range(1):
-        try:
-            devcfg = device.read({'cont': cont})
-            break
-        except cmd.BusError as e:
-            print('WARNING: bus error')
-        except cmd.Overcurrent as e:
-            print('WARNING: overcurrent')
-        except cmd.ContFail as e:
-            print('WARNING: continuity fail')
-        except Exception as e:
-            # Sometimes still get weird errors
-            #raise
-            print('WARNING: unknown error: %s' % str(e))
+    try:
+        devcfg = bp.read_bin()
+        break
+    except Exception as e:
+        # Sometimes still get weird errors
+        #raise
+        print('WARNING: unknown error: %s' % str(e))
     return devcfg, e
 
 def myhash(buff):
     return binascii.hexlify(hashlib.md5.new(buff).digest())
 
-def md5str(myhash):
+def hash8(myhash):
     return myhash[0:8] if myhash else 'None'
 
 def do_run(hal, bp, width, height, dry, fout, xstep, ystep, samples=1, cont=True):
@@ -68,26 +59,16 @@ def do_run(hal, bp, width, height, dry, fout, xstep, ystep, samples=1, cont=True
     rows = int(height / ystep)
     tstart = time.time()
 
-    device = devices.get(bp, args.device, verbose=verbose)
-
-    def my_md5(devcfg):
-        data_md5 = None
-        if 'data' in devcfg:
-            data_md5 = myhash(devcfg['data'])
-        code_md5 = myhash(devcfg['code'])
-        config_md5 = myhash(devcfg['config'])
-        return data_md5, code_md5, config_md5
-
     print('Dummy firmware read')
     trstart = time.time()
-    devcfg, e = read_fw(device, cont)
+    devcfg, e = read_fw(bp, cont)
     if not devcfg:
         #raise Exception("Failed to get baseline!")
         print('WARNING: failed to get baseline!')
-        base_data_md5, base_code_md5, base_config_md5 = None, None, None
+        base_code_hash = None
     else:
-        base_data_md5, base_code_md5, base_config_md5 = my_md5(devcfg)
-        print('Baseline: %s %s %s' % (md5str(base_data_md5), md5str(base_code_md5), md5str(base_config_md5)))
+        base_code_hash = myhash(devcfg)
+        print('Baseline: %s' % (hash8(base_code_hash),))
     trend = time.time()
     tread = trend - trstart
     print('Read time: %0.1f' % tread)
@@ -96,8 +77,8 @@ def do_run(hal, bp, width, height, dry, fout, xstep, ystep, samples=1, cont=True
     tmove = 0.1
     tsample = tread + tmove
     print('Sample time: %0.1f' % tsample)
-    nsamples = cols * rows
-    print('Taking %dc x %dr x %ds => %d net samples => ETA %s' % (cols, rows, samples, nsamples, time_str(tsample * nsamples)))
+    net_samples = cols * rows * samples
+    print('Taking %dc x %dr x %ds => %d net samples => ETA %s' % (cols, rows, samples, net_samples, time_str(tsample * net_samples)))
 
     if jf:
         j = {
@@ -109,7 +90,7 @@ def do_run(hal, bp, width, height, dry, fout, xstep, ystep, samples=1, cont=True
             'cols': cols,
             'rows': rows,
             'samples': samples,
-            'nsamples': nsamples,
+            'net_samples': net_samples,
         }
         jf.write(json.dumps(j) + '\n')
         jf.flush()
@@ -125,14 +106,6 @@ def do_run(hal, bp, width, height, dry, fout, xstep, ystep, samples=1, cont=True
             print('%s taking %d / %d @ %dc, %dr (G0 X%0.1f Y%0.1f)' % (datetime.datetime.utcnow(), posi, nsamples, col, row, x, y))
             # Hit it a bunch of times in case we got unlucky
             for dumpi in range(samples):
-                # Some evidence suggests overcurrent isn't getting cleared, causing failed captured
-                # Try re-initializing
-                # TODO: figure out the proper check
-                # this slows things down, although its not too bad
-                # maybe 4.5 => 7 seconds per position
-                #if not dry:
-                #    startup.replay(bp.dev)
-
                 j = {
                     'type': 'sample',
                     'row': row, 'col': col,
@@ -148,20 +121,10 @@ def do_run(hal, bp, width, height, dry, fout, xstep, ystep, samples=1, cont=True
                 if devcfg:
                     # Some crude monitoring
                     # Top histogram counts would be better though
-                    data_md5, code_md5, config_md5 = my_md5(devcfg)
-                    print('  %d %s %s %s' % (dumpi, md5str(data_md5), md5str(code_md5), md5str(config_md5))
-                    if code_md5 != base_code_md5:
-                        print('    code...: %s' % binascii.hexlify(devcfg['code'][0:16])
-                    if data_md5 and data_md5 != base_data_md5:
-                        print('    data...: %s' % binascii.hexlify(devcfg['data'][0:16])
-                    if config_md5 != base_config_md5:
-                        print('    config: %s' % str(devcfg['config'],)
-                    j['devcfg'] = {
-                        'code': base64.b64encode(devcfg['code']),
-                        'config': devcfg['config'],
-                        }
-                    if 'data' in devcfg:
-                        j['data'] = base64.b64encode(devcfg['data'])
+                    code_md5 = myhash(devcfg)
+                    print('  %d %s' % (dumpi, hash8(code_md5)))
+                    if code_md5 != base_code_hash:
+                        print('    code...: %s' % binascii.hexlify(devcfg['code'][0:16]))
                 if e:
                     j['e'] = (str(type(e).__name__), str(e)),
 
@@ -180,12 +143,12 @@ def run(cnc_host, dry, width, height, fnout, step, samples=1, force=False):
 
     try:
         print("")
-        print('Initializing LCNC'
+        print('Initializing LCNC')
         hal = lcnc_ar.LcncPyHalAr(host=cnc_host, dry=dry, log=None)
 
         print("")
         print('Initializing programmer')
-        bp = startup.get()
+        bp = BPWAHK()
 
         fout = None
         if not force and os.path.exists(fnout):
@@ -217,4 +180,4 @@ def main():
     run(cnc_host=args.cnc, dry=args.dry, width=args.width, height=args.height, fnout=args.fout, step=args.step, samples=args.samples, force=args.force)
 
 if __name__ == "__main__":
-    main())
+    main()
