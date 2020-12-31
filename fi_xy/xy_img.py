@@ -28,9 +28,9 @@ def histeq(buff, nbr_bins=0x100):
 def scale(buff):
     low = min(buff)
     high = max(buff)
-    print 'Lo: %0.6f' % low
-    print 'Hi: %0.6f' % high
-    for i in xrange(len(buff)):
+    print('Lo: %0.6f' % low)
+    print('Hi: %0.6f' % high)
+    for i in range(len(buff)):
         buff[i] = 255. * (buff[i] - low) / (high - low)
 
 #(r, g, b)
@@ -48,16 +48,16 @@ if __name__ == "__main__":
     parser.add_argument('ref_fin', help='Input bin file')
     args = parser.parse_args()
 
-    print 'Loading...'
+    print('Loading...')
     jlf = open(args.fin, 'r')
-    ref = open(args.ref_fin, 'r').read()
+    ref = open(args.ref_fin, 'rb').read()
 
     metaj = json.loads(jlf.readline())
 
     cols = metaj['cols']
     rows = metaj['rows']
-    print 'Size: %dc x %dr' % (cols, rows)
-    print 'Plotting...'
+    print('Size: %dc x %dr' % (cols, rows))
+    print('Plotting...')
     im = Image.new("RGB", (cols, rows), "white")
     nlines = 0
     allzeros = 0
@@ -67,11 +67,26 @@ if __name__ == "__main__":
     baselines = 0
     baseline = None
     exceptions = 0
+    sampn = 1
     freqs = {}
-    for row in xrange(rows):
-        for col in xrange(cols):
-            for samplei in xrange(3):
-                j = json.loads(jlf.readline())
+    done = False
+    for row in range(rows):
+        if done:
+            break
+        for col in range(cols):
+            if done:
+                break
+            for samplei in range(sampn):
+                line = jlf.readline()
+                if not line:
+                    print("WARNING: incomplete data")
+                    done = True
+                    break
+                try:
+                    j = json.loads(line)
+                except:
+                    print("BAD: %s" % line)
+                    raise
                 # {"devfg": {"config": {"secure": true, "user_id1": 16383, "user_id0": 16383, "user_id3": 16383, "user_id2": 16383, "conf_word": 3}, "code": "AAAAA...AAAAAAAAAAAA=", "data": "AA...AAAAAAAAAA="}, "dumpi": 1, "y": 0.0, "x": 0.0, "type": "sample", "col": 0, "row": 0}
                 def decode(k):
                     data = j['devcfg'].get(k)
@@ -83,8 +98,8 @@ if __name__ == "__main__":
                 if 'devcfg' in j:
                     code = decode('code')
                     data = decode('data')
-                    config = j['devcfg']['config']
-    
+                    # config = j['devcfg'].get('config', {})
+ 
                 freqs[code] = freqs.get(code, 0) + 1
                 c = (0, 0, 255)
                 # Exception, namely overcurrent
@@ -141,34 +156,37 @@ if __name__ == "__main__":
                         # blue
                         c = (0, 0, 255)
                 else:
-                    print j
+                    print(j)
                     raise Exception('No code, no exception')
                     #c = (16, 16, 16)
 
                 im.putpixel((col, row), c)
                 nlines += 1
     
-    print 'Have %d / %d points' % (nlines, rows * cols * 3)
-    print '  All 0:       %d' % allzeros
-    print '  All 1:       %d' % allones
-    print '  Matches:     %d' % matches
-    print '  Baseline:    %d' % baselines
-    print '  Others:      %d' % others
-    print '  Exceptions:  %d' % exceptions
+    print('Have %d / %d points' % (nlines, rows * cols * 3))
+    print('  All 0:       %d' % allzeros)
+    print('  All 1:       %d' % allones)
+    print('  Matches:     %d' % matches)
+    print('  Baseline:    %d' % baselines)
+    print('  Others:      %d' % others)
+    print('  Exceptions:  %d' % exceptions)
 
-    print 'Raw frequency dist'
-    for code, freq in sorted(list(freqs.iteritems()), key=lambda x: (x[1], x[0])):
+    print('Raw frequency dist')
+    for code, freq in sorted(list(freqs.items()), key=lambda x: (x[1], x[0])):
         if code is None:
             s = 'None'
         else:
             s = binascii.hexlify(code[0:16])
-        print '  %d w/ %s' % (freq, s)
+        print('  %d w/ %s' % (freq, s))
 
     fnout = args.fin.replace('.jl', '.png')
     if fnout == args.fin:
         raise Exception('Expecting .jl file')
-    print 'Saving to %s...' % fnout
+    print('Saving to %s...' % fnout)
     im.save(fnout)
 
-    print 'Done'
+    fnout = args.fin.replace('.jl', '_big.png')
+    im.resize((im.size[0] * 8, im.size[1] * 8)).save(fnout)
+
+    print('Done')
 

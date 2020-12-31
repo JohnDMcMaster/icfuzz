@@ -9,7 +9,7 @@ from uvscada.minipro import Minipro
 from uvscada.ezlaze import EzLaze
 from uvscada.benchmark import time_str
 import threading
-import Queue
+import queue
 
 import argparse
 import time
@@ -36,7 +36,7 @@ class ELT(threading.thread):
         while self.running:
             try:
                 _t = self.q.get(True, 0.1)
-            except Queue.Empty:
+            except queue.Empty:
                 continue
             
             self.idle.clear()
@@ -68,22 +68,22 @@ def run(hal, prog, el, elt, fout, dry=False, square=False):
     SAMPLES = 4
     tpic = SAMPLES
     npic = cols * rows
-    print 'Taking %dc x %dr => %d pics => ETA %s' % (cols, rows, npic, time_str(tpic * npic))
+    print(('Taking %dc x %dr => %d pics => ETA %s' % (cols, rows, npic, time_str(tpic * npic))))
     tstart = time.time()
-    
+
     posi = 0
-    for row in xrange(rows):
+    for row in range(rows):
         y = row * SPOT
         hal.mv_abs({'x': -SPOT, 'y': y})
-        for col in xrange(cols):
+        for col in range(cols):
             posi += 1
             x = col * SPOT
             hal.mv_abs({'x': x})
             if dry:
                 continue
-            print '%s taking %d / %d @ %dc, %dr' % (datetime.datetime.utcnow(), posi, npic, col, row)
+            print(('%s taking %d / %d @ %dc, %dr' % (datetime.datetime.utcnow(), posi, npic, col, row)))
             # Hit it a bunch of times in case we got unlucky
-            for dumpi in xrange(SAMPLES):
+            for dumpi in range(SAMPLES):
                 elt.fire()
                 step_ms = 0.2 / SAMPLES * 1000
                 sleep_sec = (dumpi * step_ms + random.randint(0, step_ms)) / 1000.
@@ -91,7 +91,7 @@ def run(hal, prog, el, elt, fout, dry=False, square=False):
                 fw = prog.read()
                 # Some crude monitoring
                 # Top histogram counts would be better though
-                print '  %d: %s' % (dumpi, binascii.hexlify(md5.new(fw).digest()))
+                print(('  %d: %s' % (dumpi, binascii.hexlify(md5.new(fw).digest()))))
                 
                 j = {'row': row, 'col': col, 'x': x, 'y': y, 'dumpi': dumpi, 'sleep': sleep_sec, 'bin': base64.b64encode(fw)}
                 jf.write(json.dump(j))
@@ -99,11 +99,11 @@ def run(hal, prog, el, elt, fout, dry=False, square=False):
                 # Make sure fires start cleanly
                 elt.idle.wait(1)
                 
-    print 'Ret home'
+    print('Ret home')
     hal.mv_abs({'x': 0, 'y': 0})
-    print 'Movement done'
+    print('Movement done')
     tend = time.time()
-    print 'Took %s' % time_str(tend - tstart)
+    print(('Took %s' % time_str(tend - tstart)))
 
 def main():
     parser = argparse.ArgumentParser(description='Use ezlaze to fuzz dice')
@@ -120,17 +120,17 @@ def main():
     hal = None
     elt = None
     try:
-        print
-        print 'Initializing LCNC'
+        print("")
+        print('Initializing LCNC')
         hal = lcnc_ar.LcncPyHalAr(host=args.cnc, dry=args.dry, log=None)
 
-        print
-        print 'Initializing programmer'
+        print("")
+        print('Initializing programmer')
         prog = Minipro(device=args.prog_dev)
 
         # frickin laser
-        print
-        print 'Initializing laser'
+        print("")
+        print('Initializing laser')
         el = EzLaze(args.ezlaze)
         # Max speed
         '''
@@ -142,15 +142,15 @@ def main():
         elt = ELT(el)
         elt.start()
 
-        print
-        print 'Running'
+        print("")
+        print('Running')
         run(hal, prog, el, elt, fout=args.fout, dry=args.dry)
     finally:
-        print 'Shutting down laser thread'
+        print('Shutting down laser thread')
         if elt:
             elt.running = False
         
-        print 'Shutting down hal'
+        print('Shutting down hal')
         if hal:
             hal.ar_stop()
 
