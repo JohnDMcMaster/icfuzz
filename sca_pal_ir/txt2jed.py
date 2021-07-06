@@ -13,8 +13,9 @@ Die oriented with text right side up
 """
 
 
-from .main import make_jed
+from main import make_jed
 from zorrom import mrom
+from zorrom.util import add_bool_arg, parser_grcs, parse_grcs
 
 """
 Visually ordered to be in physical order
@@ -180,9 +181,40 @@ for k, v in word_col2log.items():
     word_log2phys[v] = k
 assert len(word_log2phys) == 64
 
-def run(txt_in, jed_out):
+def munge_txt(txt,
+              win,
+              hin,
+              rotate=None,
+              flipx=False,
+              flipy=False,
+              invert=False):
+    '''Return contents as char array of bits (ie string with no whitespace)'''
+    assert rotate in (None, 0, 90, 180, 270)
+    if rotate == 90 or rotate == 270:
+        wout, hout = hin, win
+    else:
+        wout, hout = win, hin
+    txtdict = mrom.txt2dict(txt, win, hin)
+    if rotate not in (None, 0):
+        txtdict = mrom.td_rotate(rotate, txtdict, wout, hout)
+    if flipx:
+        txtdict = mrom.td_flipx(txtdict, wout, hout)
+    if flipy:
+        txtdict = mrom.td_flipy(txtdict, wout, hout)
+    if invert:
+        txtdict = mrom.td_invert(txtdict, wout, hout)
+    return txtdict, wout, hout
+
+"""
+Unufsed (bright) areas are 0 on bin
+However bright areas are usually classified as 1
+"""
+def run(txt_in, jed_out, invert=True):
     txtin, win, hin = mrom.load_txt(open(txt_in, "r"), None, None)
-    assert (win, hin) == (32, 64)
+    assert (win, hin) == (64, 32), (win, hin)
+    
+    if invert:
+        txtin, win, hin = munge_txt(txtin, win, hin)
 
     words = [list("0" * 32) for _x in range(64)]
     for wordi in range(64):
