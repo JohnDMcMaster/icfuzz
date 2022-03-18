@@ -30,7 +30,7 @@ def check_bits_toggle(buff):
     if len(bit_clear) != 8:
         ok = False
     print("Set bits: %u, cleared bits: %u, ok %s" % (len(bit_set), len(bit_clear), ok))
-    return ok
+    return (ok, bit_set, bit_clear)
 
 def check_stuck_addr(buff):
     retok = True
@@ -60,16 +60,26 @@ def check_stuck_addr(buff):
         print("  matches %u, mismatches %u" % (matches, mismatches))
     return retok
 
-def run(fin):
+def run(fin, verbose=False):
     ok = True
     print("Reading %s" % fin)
     buff = open(fin, "rb").read()
     print("")
-    ok = ok & check_bits_toggle(buff)
+    ok_bits, bits_set, bits_clear = check_bits_toggle(buff)
+    ok = ok & ok_bits
     print("")
-    ok = ok & check_stuck_addr(buff)
+    ok_addr = check_stuck_addr(buff)
+    ok = ok & ok_addr
     print("")
     print("Overall: %s" % (ok,))
+    ret = {
+        "ok": ok,
+        "ok_bits": ok_bits,
+        "bits_set": bits_set,
+        "bits_clear": bits_clear,
+        "ok_addr": ok_addr,
+    }
+    return ret
 
 def main():
     import argparse
